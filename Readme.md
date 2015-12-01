@@ -28,4 +28,4 @@ http://127.0.0.1:3001/
 
 Add Song API
 ============
-http://127.0.0.1:3001/addSong?ids=\<track id array\>
+`http://127.0.0.1:3001/addSong?ids=<track id array>`
