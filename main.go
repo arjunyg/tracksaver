@@ -8,6 +8,7 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/big"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 
 const CLIENT_ID string = "###CLIENT ID###"
 const CLIENT_SECRET string = "###CLIENT SECRET###"
+const LOG_PATH string = "tracksaver.log"
 
 type authForm struct {
 	ClientID string
@@ -25,6 +27,8 @@ type authForm struct {
 	Scope    string
 	State    string
 }
+
+var logger *log.Logger
 
 var tmpl *template.Template
 
@@ -92,7 +96,7 @@ func callback(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 }
 
 func Refresh() {
-	fmt.Println("Refresh")
+	logger.Println("Refreshing token")
 	data := url.Values{}
 	data.Set("grant_type", "refresh_token")
 	data.Set("refresh_token", RefreshToken)
@@ -101,13 +105,14 @@ func Refresh() {
 	resp, err := http.PostForm("https://accounts.spotify.com/api/token", data)
 
 	if err != nil {
-		fmt.Println(err)
+		logger.Println(err)
 		return
 	}
 
 	if resp.StatusCode != 200 {
-		fmt.Println(resp.Status)
-		io.Copy(os.Stdout, resp.Body)
+		logger.Println(resp.Status)
+		rstr, _ := ioutil.ReadAll(resp.Body)
+		logger.Println(string(rstr))
 		resp.Body.Close()
 		return
 	}
@@ -141,7 +146,12 @@ func addSong(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	fmt.Fprintln(w, string(dataBytes))
 	req.Header.Add("Authorization", TokenType+" "+AccessToken)
 	resp, _ := Client.Do(req)
-	io.Copy(w, resp.Body)
+	if resp.StatusCode != 200 {
+		rstr, _ := ioutil.ReadAll(resp.Body)
+		logger.Println(string(rstr))
+	} else {
+		io.Copy(w, resp.Body)
+	}
 	resp.Body.Close()
 }
 
@@ -157,6 +167,12 @@ func randSeq(n int) string {
 }
 
 func main() {
+
+	logf, _ := os.OpenFile(LOG_PATH, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+
+	prefix := fmt.Sprintf("tracksaver [%d]: ", os.Getpid())
+	logger = log.New(logf, prefix, log.LstdFlags)
+
 	Client = &http.Client{}
 
 	router := httprouter.New()
@@ -167,5 +183,5 @@ func main() {
 	router.GET("/callback", callback)
 	router.POST("/addSong", addSong)
 
-	log.Fatal(http.ListenAndServe("127.0.0.1:3001", router))
+	logger.Fatal(http.ListenAndServe("127.0.0.1:3001", router))
 }
